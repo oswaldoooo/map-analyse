@@ -48,7 +48,9 @@ select {
 }
 
 input[type="number"] {
-  flex: 1;
+  flex: 0 1 auto;
+  width: 100%;
+  max-width: 6rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid #ccc;
   border-radius: 4px;
