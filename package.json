@@ -1,0 +1,6 @@
+{
+  "name": "hikemap",
+  "version": "1.0.0",
+  "description": "路迹坡度分析：根据坡度阈值分析 GPX/KML 文件中的陡坡路段",
+  "private": true
+}
