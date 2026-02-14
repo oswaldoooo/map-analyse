@@ -19,12 +19,21 @@
       <input type="file" id="fileInput" accept=".gpx,.kml" hidden />
       <span id="fileName" class="file-name"></span>
     </div>
-    <div class="row row-center">
+    <div class="row row-center row-buttons">
       <button type="button" id="analyze" class="btn-analyze">分析</button>
+      <button type="button" id="autoAnalyzeBtn" class="btn-auto-analyze">自动分析</button>
+    </div>
+    <div class="row row-center row-buttons">
+      <button type="button" id="exportGpxBtn" class="btn-export">导出为 GPX</button>
+      <button type="button" id="exportKmlBtn" class="btn-export">导出为 KML</button>
+      <button type="button" id="exportMergeKmlBtn" class="btn-export">合并导出(kml)</button>
     </div>
     <div class="summary">
       <div class="summary-title">总结:</div>
-      <div class="summary-line">符合条件的数量: <span id="resultCount">—</span></div>
+      <div id="summaryContent">
+        <div class="summary-line">符合条件的数量: <span id="resultCount">—</span></div>
+      </div>
+      <div id="summaryByGrade" class="summary-by-grade" hidden></div>
     </div>
     <div class="segment-list-wrap">
       <div class="segment-list-title">符合条件的路段:</div>

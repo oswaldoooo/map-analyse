@@ -1,13 +1,31 @@
 (function () {
+  const levelMap = { C: 19, B: 26, A: 36, S: 45 };
+  const levelOrder = ['S', 'A', 'B', 'C'];
+
+  function getSlopeLevel(slope) {
+    for (const grade of levelOrder) {
+      if (slope >= levelMap[grade]) return grade;
+    }
+    return '—';
+  }
+
   const slopeInput = document.getElementById('slope');
   const chooseFileBtn = document.getElementById('chooseFile');
   const fileInput = document.getElementById('fileInput');
   const fileNameSpan = document.getElementById('fileName');
   const analyzeBtn = document.getElementById('analyze');
+  const autoAnalyzeBtn = document.getElementById('autoAnalyzeBtn');
   const resultCountSpan = document.getElementById('resultCount');
+  const summaryContent = document.getElementById('summaryContent');
+  const summaryByGrade = document.getElementById('summaryByGrade');
   const segmentListEl = document.getElementById('segmentList');
+  const exportGpxBtn = document.getElementById('exportGpxBtn');
+  const exportKmlBtn = document.getElementById('exportKmlBtn');
+  const exportMergeKmlBtn = document.getElementById('exportMergeKmlBtn');
 
   let selectedFile = null;
+  let lastSegments = [];
+  let lastTrackCoords = [];
 
   chooseFileBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => {
@@ -16,15 +34,23 @@
       selectedFile = file;
       fileNameSpan.textContent = file.name;
       resultCountSpan.textContent = '—';
+      summaryByGrade.hidden = true;
+      summaryContent.hidden = false;
       renderSegmentList([]);
     }
   });
 
-  analyzeBtn.addEventListener('click', runAnalysis);
+  analyzeBtn.addEventListener('click', () => runAnalysis(false));
+  autoAnalyzeBtn.addEventListener('click', () => runAnalysis(true));
+  exportGpxBtn.addEventListener('click', () => exportAs('gpx'));
+  exportKmlBtn.addEventListener('click', () => exportAs('kml'));
+  exportMergeKmlBtn.addEventListener('click', exportMergeKml);
 
-  function runAnalysis() {
-    const slopeThreshold = parseFloat(slopeInput.value, 10);
-    if (Number.isNaN(slopeThreshold) || slopeThreshold < 0) {
+  const AUTO_ANALYZE_THRESHOLD = 19;
+
+  function runAnalysis(autoMode) {
+    const slopeThreshold = autoMode ? AUTO_ANALYZE_THRESHOLD : parseFloat(slopeInput.value, 10);
+    if (!autoMode && (Number.isNaN(slopeThreshold) || slopeThreshold < 0)) {
       resultCountSpan.textContent = '请输入有效坡度阈值';
       return;
     }
@@ -34,6 +60,8 @@
     }
 
     resultCountSpan.textContent = '分析中…';
+    summaryByGrade.hidden = true;
+    summaryContent.hidden = false;
     const ext = (selectedFile.name || '').toLowerCase();
 
     const reader = new FileReader();
@@ -47,7 +75,15 @@
           : toGeoJSON.gpx(doc);
 
         const segments = getSegmentsAboveSlope(geojson, slopeThreshold);
-        resultCountSpan.textContent = String(segments.length);
+        lastSegments = segments;
+        lastTrackCoords = coordsFromGeoJSON(geojson);
+        if (autoMode) {
+          renderSummaryByGrade(segments);
+          summaryContent.hidden = true;
+          summaryByGrade.hidden = false;
+        } else {
+          resultCountSpan.textContent = String(segments.length);
+        }
         renderSegmentList(segments);
       } catch (err) {
         resultCountSpan.textContent = '解析失败';
@@ -58,6 +94,159 @@
       resultCountSpan.textContent = '读取文件失败';
     };
     reader.readAsText(selectedFile, 'UTF-8');
+  }
+
+  function renderSummaryByGrade(segments) {
+    const stats = { C: { count: 0, gain: 0 }, B: { count: 0, gain: 0 }, A: { count: 0, gain: 0 }, S: { count: 0, gain: 0 } };
+    for (const s of segments) {
+      const grade = getSlopeLevel(s.slope);
+      if (grade !== '—' && stats[grade] != null) {
+        stats[grade].count += 1;
+        stats[grade].gain += s.gainM;
+      }
+    }
+    summaryByGrade.innerHTML = levelOrder
+      .map(
+        (grade) =>
+          '<div class="grade-line">' +
+          grade +
+          '档: ' +
+          stats[grade].count +
+          ' 段, 累积爬升 ' +
+          Math.round(stats[grade].gain * 10) / 10 +
+          ' m</div>'
+      )
+      .join('');
+  }
+
+  function defaultExportFilename(ext) {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return (
+      now.getFullYear() +
+      '-' +
+      pad(now.getMonth() + 1) +
+      '-' +
+      pad(now.getDate()) +
+      '-' +
+      pad(now.getHours()) +
+      '-' +
+      pad(now.getMinutes()) +
+      '-' +
+      pad(now.getSeconds()) +
+      '.' +
+      ext
+    );
+  }
+
+  function downloadBlob(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportAs(format) {
+    if (!lastSegments.length) return;
+    const filename = defaultExportFilename(format === 'kml' ? 'kml' : 'gpx');
+    if (format === 'kml') {
+      const placemarks = lastSegments
+        .map((s, i) => {
+          const grade = getSlopeLevel(s.slope);
+          const coordsStr = segmentPointsToKmlCoords(s.points);
+          return (
+            '  <Placemark><name>路段' +
+            (i + 1) +
+            ' (' +
+            grade +
+            ')</name><LineString><coordinates>' +
+            coordsStr +
+            '</coordinates></LineString></Placemark>'
+          );
+        })
+        .join('\n');
+      const kml =
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<kml xmlns="http://www.opengis.net/kml/2.2">\n' +
+        '  <Document><name>导出路段</name>\n' +
+        placemarks +
+        '\n  </Document>\n</kml>';
+      const blob = new Blob(['\uFEFF' + kml], { type: 'application/vnd.google-earth.kml+xml;charset=utf-8' });
+      downloadBlob(blob, filename);
+    } else {
+      const trkSegs = lastSegments
+        .map((s) => {
+          const grade = getSlopeLevel(s.slope);
+          return (
+            '  <trkseg>\n' +
+            segmentPointsToGpxTrkpt(s.points) +
+            '\n    <extensions><grade>' +
+            grade +
+            '</grade></extensions>\n  </trkseg>'
+          );
+        })
+        .join('\n');
+      const gpx =
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<gpx version="1.1" creator="hikemap">\n' +
+        '  <trk>\n' +
+        '    <name>导出路段</name>\n' +
+        trkSegs +
+        '\n  </trk>\n' +
+        '</gpx>';
+      const blob = new Blob(['\uFEFF' + gpx], { type: 'application/gpx+xml;charset=utf-8' });
+      downloadBlob(blob, filename);
+    }
+  }
+
+  function exportMergeKml() {
+    if (!lastSegments.length || !lastTrackCoords.length) return;
+    const filename = defaultExportFilename('kml');
+    const trackCoordsStr = lastTrackCoords
+      .map((p) => p[0] + ',' + p[1] + (p[2] != null ? ',' + p[2] : ''))
+      .join(' ');
+    const styles =
+      '<Style id="styleTrack"><LineStyle><color>7f7f7f7f</color><width>2</width></LineStyle></Style>\n' +
+      '  <Style id="styleC"><LineStyle><color>ff00ff00</color><width>4</width></LineStyle></Style>\n' +
+      '  <Style id="styleB"><LineStyle><color>ff00a5ff</color><width>4</width></LineStyle></Style>\n' +
+      '  <Style id="styleA"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>\n' +
+      '  <Style id="styleS"><LineStyle><color>ffff00ff</color><width>4</width></LineStyle></Style>';
+    const trackPlacemark =
+      '<Placemark><name>原始路迹</name><styleUrl>#styleTrack</styleUrl><LineString><coordinates>' +
+      trackCoordsStr +
+      '</coordinates></LineString></Placemark>';
+    const segmentPlacemarks = lastSegments
+      .map((s, i) => {
+        const grade = getSlopeLevel(s.slope);
+        const styleId = grade === '—' ? 'styleTrack' : 'style' + grade;
+        const coordsStr = segmentPointsToKmlCoords(s.points);
+        return (
+          '<Placemark><name>路段' +
+          (i + 1) +
+          ' (' +
+          grade +
+          ')</name><styleUrl>#' +
+          styleId +
+          '</styleUrl><LineString><coordinates>' +
+          coordsStr +
+          '</coordinates></LineString></Placemark>'
+        );
+      })
+      .join('\n');
+    const kml =
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<kml xmlns="http://www.opengis.net/kml/2.2">\n' +
+      '  <Document><name>合并导出</name>\n' +
+      '  ' +
+      styles +
+      '\n  ' +
+      trackPlacemark +
+      '\n  ' +
+      segmentPlacemarks +
+      '\n  </Document>\n</kml>';
+    const blob = new Blob(['\uFEFF' + kml], { type: 'application/vnd.google-earth.kml+xml;charset=utf-8' });
+    downloadBlob(blob, filename);
   }
 
   function haversineMeters(lat1, lon1, lat2, lon2) {
@@ -160,6 +349,7 @@
       if (startEle == null || endEle == null) continue;
       const totalGain = endEle - startEle;
       if (totalGain <= MIN_HEIGHT_M) continue;
+      // 水平距离 = 起点到终点之间相邻航点水平距离之和（含转弯，非起止点直线）
       let totalDist = 0;
       for (let j = startIdx; j < endIdx; j++) {
         const a = coords[j];
@@ -169,15 +359,38 @@
       if (totalDist < MIN_HORIZONTAL_M) continue;
       const slope = (totalGain / totalDist) * 100;
       if (slope <= threshold) continue;
+      const points = coords.slice(startIdx, endIdx + 1);
       segments.push({
         start: { lon: start[0], lat: start[1], ele: startEle },
         end: { lon: end[0], lat: end[1], ele: endEle },
         slope: Math.round(slope * 10) / 10,
         distM: Math.round(totalDist * 10) / 10,
-        gainM: Math.round(totalGain * 10) / 10
+        gainM: Math.round(totalGain * 10) / 10,
+        points
       });
     }
     return segments;
+  }
+
+  function segmentPointsToKmlCoords(points) {
+    return points
+      .map((p) => p[0] + ',' + p[1] + (p[2] != null ? ',' + p[2] : ''))
+      .join(' ');
+  }
+
+  function segmentPointsToGpxTrkpt(points) {
+    return points
+      .map(
+        (p) =>
+          '    <trkpt lat="' +
+          p[1] +
+          '" lon="' +
+          p[0] +
+          '">' +
+          (p[2] != null ? '<ele>' + p[2] + '</ele>' : '') +
+          '</trkpt>'
+      )
+      .join('\n');
   }
 
   function renderSegmentList(segments) {
@@ -186,7 +399,7 @@
       return;
     }
     segmentListEl.innerHTML =
-      '<table><thead><tr><th>起点(经度,纬度)</th><th>起点海拔(m)</th><th>终点(经度,纬度)</th><th>终点海拔(m)</th><th>水平距离(m)</th><th>累积爬升(m)</th><th>坡度(%)</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>起点(经度,纬度)</th><th>起点海拔(m)</th><th>终点(经度,纬度)</th><th>终点海拔(m)</th><th>水平距离(m)</th><th>累积爬升(m)</th><th>坡度(%)</th><th>坡度等级</th></tr></thead><tbody>' +
       segments
         .map(
           (s) =>
@@ -208,6 +421,8 @@
             s.gainM +
             '</td><td>' +
             s.slope +
+            '</td><td>' +
+            getSlopeLevel(s.slope) +
             '</td></tr>'
         )
         .join('') +

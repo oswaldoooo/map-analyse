@@ -88,6 +88,60 @@ input[type="number"] {
   transform: scale(0.98);
 }
 
+.btn-auto-analyze {
+  padding: 0.6rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  background: #16a34a;
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn-auto-analyze:hover {
+  background: #15803d;
+}
+
+.btn-auto-analyze:active {
+  transform: scale(0.98);
+}
+
+.summary-by-grade {
+  margin-top: 0.25rem;
+}
+
+.summary-by-grade[hidden] {
+  display: none;
+}
+
+.summary-by-grade .grade-line {
+  margin-bottom: 0.25rem;
+}
+
+.btn-export {
+  padding: 0.6rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn-export:hover {
+  background: #1d4ed8;
+}
+
+.btn-export:active {
+  transform: scale(0.98);
+}
+
+.row-buttons {
+  gap: 1rem;
+}
+
 .summary {
   margin-top: 1rem;
   padding-top: 1rem;
