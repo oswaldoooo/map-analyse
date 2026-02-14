@@ -172,7 +172,9 @@
       segments.push({
         start: { lon: start[0], lat: start[1], ele: startEle },
         end: { lon: end[0], lat: end[1], ele: endEle },
-        slope: Math.round(slope * 10) / 10
+        slope: Math.round(slope * 10) / 10,
+        distM: Math.round(totalDist * 10) / 10,
+        gainM: Math.round(totalGain * 10) / 10
       });
     }
     return segments;
@@ -184,22 +186,26 @@
       return;
     }
     segmentListEl.innerHTML =
-      '<table><thead><tr><th>起点经度</th><th>起点纬度</th><th>起点海拔(m)</th><th>终点经度</th><th>终点纬度</th><th>终点海拔(m)</th><th>坡度(%)</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>起点(经度,纬度)</th><th>起点海拔(m)</th><th>终点(经度,纬度)</th><th>终点海拔(m)</th><th>水平距离(m)</th><th>累积爬升(m)</th><th>坡度(%)</th></tr></thead><tbody>' +
       segments
         .map(
           (s) =>
             '<tr><td>' +
             s.start.lon.toFixed(6) +
-            '</td><td>' +
+            ',' +
             s.start.lat.toFixed(6) +
             '</td><td>' +
             (s.start.ele != null ? s.start.ele.toFixed(1) : '—') +
             '</td><td>' +
             s.end.lon.toFixed(6) +
-            '</td><td>' +
+            ',' +
             s.end.lat.toFixed(6) +
             '</td><td>' +
             (s.end.ele != null ? s.end.ele.toFixed(1) : '—') +
+            '</td><td>' +
+            s.distM +
+            '</td><td>' +
+            s.gainM +
             '</td><td>' +
             s.slope +
             '</td></tr>'
