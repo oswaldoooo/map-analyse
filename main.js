@@ -5,6 +5,7 @@
   const fileNameSpan = document.getElementById('fileName');
   const analyzeBtn = document.getElementById('analyze');
   const resultCountSpan = document.getElementById('resultCount');
+  const segmentListEl = document.getElementById('segmentList');
 
   let selectedFile = null;
 
@@ -15,6 +16,7 @@
       selectedFile = file;
       fileNameSpan.textContent = file.name;
       resultCountSpan.textContent = '—';
+      renderSegmentList([]);
     }
   });
 
@@ -44,8 +46,9 @@
           ? toGeoJSON.kml(doc)
           : toGeoJSON.gpx(doc);
 
-        const count = countSegmentsAboveSlope(geojson, slopeThreshold);
-        resultCountSpan.textContent = String(count);
+        const segments = getSegmentsAboveSlope(geojson, slopeThreshold);
+        resultCountSpan.textContent = String(segments.length);
+        renderSegmentList(segments);
       } catch (err) {
         resultCountSpan.textContent = '解析失败';
         console.error(err);
@@ -70,24 +73,51 @@
     return R * c;
   }
 
+  const MIN_HORIZONTAL_M = 20;   // 水平距离超过 20m 才算
+  const MIN_HEIGHT_M = 10;      // 总爬升大于 10m 才算有效坡
+  const MAX_FLAT_M = 10;        // 中途平路累计不超过 10m 才视为连续
+
   /**
-   * 坡度（百分比）= (高程差 / 水平距离) × 100
-   * 水平距离用 Haversine 球面距离（米），高程单位需为米（GPX 标准）。
-   * 返回绝对值，便于同时统计陡上坡和陡下坡。
-   * 水平距离过短时返回 NaN，调用方应忽略该段（避免 GPS 噪声放大）。
+   * 将轨迹切分为「连续爬升段」：海拔不降，且中途平路（水平距离）累计不超过 10m 的视为一段；
+   * 直到平路超过 10m 或海拔开始下降则结束当前段。
+   * 返回 [{ startIdx, endIdx }, ...]，下标均含（inclusive）。
    */
-  function getSlopePercent(p1, p2) {
-    const ele1 = p1[2];
-    const ele2 = p2[2];
-    if (ele1 == null || ele2 == null) return NaN; // 无高程数据
-    const lon1 = p1[0], lat1 = p1[1];
-    const lon2 = p2[0], lat2 = p2[1];
-    const dist = haversineMeters(lat1, lon1, lat2, lon2);
-    const minDistM = 4; // 水平距离超过 20m 才算，否则不参与统计
-    if (dist < minDistM) return NaN;
-    const deltaEle = ele2 - ele1;
-    const slopePercent = (deltaEle / dist) * 100;
-    return Math.abs(slopePercent);
+  function buildClimbChunks(coords) {
+    const chunks = [];
+    let startIdx = 0;
+    let flatDist = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p1 = coords[i];
+      const p2 = coords[i + 1];
+      const ele1 = p1[2];
+      const ele2 = p2[2];
+      if (ele1 == null || ele2 == null) {
+        chunks.push({ startIdx, endIdx: i });
+        startIdx = i + 1;
+        flatDist = 0;
+        continue;
+      }
+      const dist = haversineMeters(p1[1], p1[0], p2[1], p2[0]);
+      const deltaEle = ele2 - ele1;
+      if (deltaEle < 0) {
+        chunks.push({ startIdx, endIdx: i });
+        startIdx = i + 1;
+        flatDist = 0;
+      } else if (deltaEle === 0) {
+        flatDist += dist;
+        if (flatDist > MAX_FLAT_M) {
+          chunks.push({ startIdx, endIdx: i });
+          startIdx = i + 1;
+          flatDist = 0;
+        }
+      } else {
+        flatDist = 0;
+      }
+    }
+    if (startIdx <= coords.length - 1) {
+      chunks.push({ startIdx, endIdx: coords.length - 1 });
+    }
+    return chunks;
   }
 
   function coordsFromGeoJSON(geojson) {
@@ -114,13 +144,67 @@
     return coords;
   }
 
-  function countSegmentsAboveSlope(geojson, threshold) {
+  /**
+   * 有效路段 = 连续爬升段（海拔不降，平路≤10m）。对每段用总爬升/总水平距离算坡度。
+   * 只保留：水平距离≥20m、总爬升>10m、坡度>阈值的段。
+   */
+  function getSegmentsAboveSlope(geojson, threshold) {
     const coords = coordsFromGeoJSON(geojson);
-    let count = 0;
-    for (let i = 0; i < coords.length - 1; i++) {
-      const slope = getSlopePercent(coords[i], coords[i + 1]);
-      if (!Number.isNaN(slope) && slope > threshold) count++;
+    const chunks = buildClimbChunks(coords);
+    const segments = [];
+    for (const { startIdx, endIdx } of chunks) {
+      const start = coords[startIdx];
+      const end = coords[endIdx];
+      const startEle = start[2];
+      const endEle = end[2];
+      if (startEle == null || endEle == null) continue;
+      const totalGain = endEle - startEle;
+      if (totalGain <= MIN_HEIGHT_M) continue;
+      let totalDist = 0;
+      for (let j = startIdx; j < endIdx; j++) {
+        const a = coords[j];
+        const b = coords[j + 1];
+        totalDist += haversineMeters(a[1], a[0], b[1], b[0]);
+      }
+      if (totalDist < MIN_HORIZONTAL_M) continue;
+      const slope = (totalGain / totalDist) * 100;
+      if (slope <= threshold) continue;
+      segments.push({
+        start: { lon: start[0], lat: start[1], ele: startEle },
+        end: { lon: end[0], lat: end[1], ele: endEle },
+        slope: Math.round(slope * 10) / 10
+      });
     }
-    return count;
+    return segments;
+  }
+
+  function renderSegmentList(segments) {
+    if (!segments.length) {
+      segmentListEl.innerHTML = '<p class="segment-list-empty">暂无符合条件的路段</p>';
+      return;
+    }
+    segmentListEl.innerHTML =
+      '<table><thead><tr><th>起点经度</th><th>起点纬度</th><th>起点海拔(m)</th><th>终点经度</th><th>终点纬度</th><th>终点海拔(m)</th><th>坡度(%)</th></tr></thead><tbody>' +
+      segments
+        .map(
+          (s) =>
+            '<tr><td>' +
+            s.start.lon.toFixed(6) +
+            '</td><td>' +
+            s.start.lat.toFixed(6) +
+            '</td><td>' +
+            (s.start.ele != null ? s.start.ele.toFixed(1) : '—') +
+            '</td><td>' +
+            s.end.lon.toFixed(6) +
+            '</td><td>' +
+            s.end.lat.toFixed(6) +
+            '</td><td>' +
+            (s.end.ele != null ? s.end.ele.toFixed(1) : '—') +
+            '</td><td>' +
+            s.slope +
+            '</td></tr>'
+        )
+        .join('') +
+      '</tbody></table>';
   }
 })();

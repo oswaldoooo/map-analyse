@@ -112,3 +112,51 @@ input[type="number"] {
   font-size: 0.9rem;
   margin-top: 0.5rem;
 }
+
+.segment-list-wrap {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.segment-list-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.segment-list {
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  font-family: ui-monospace, monospace;
+}
+
+.segment-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.segment-list th,
+.segment-list td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.segment-list th {
+  font-weight: 600;
+  color: #555;
+  position: sticky;
+  top: 0;
+  background: #fff;
+}
+
+.segment-list tr:hover td {
+  background: #f8f8f8;
+}
+
+.segment-list-empty {
+  color: #888;
+  margin: 0;
+  padding: 0.5rem 0;
+}
