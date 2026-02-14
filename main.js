@@ -22,6 +22,7 @@
   const exportGpxBtn = document.getElementById('exportGpxBtn');
   const exportKmlBtn = document.getElementById('exportKmlBtn');
   const exportMergeKmlBtn = document.getElementById('exportMergeKmlBtn');
+  const coordFormatSelect = document.getElementById('coordFormat');
 
   let selectedFile = null;
   let lastSegments = [];
@@ -38,6 +39,9 @@
       summaryContent.hidden = false;
       renderSegmentList([]);
     }
+  });
+  coordFormatSelect.addEventListener('change', () => {
+    if (lastSegments.length) renderSegmentList(lastSegments);
   });
 
   analyzeBtn.addEventListener('click', () => runAnalysis(false));
@@ -393,26 +397,36 @@
       .join('\n');
   }
 
+  function formatCoord(lon, lat) {
+    const fmt = coordFormatSelect.value;
+    if (fmt === 'mgrs' && typeof window.formatMGRS === 'function') {
+      return window.formatMGRS(lon, lat);
+    }
+    return lon.toFixed(6) + ',' + lat.toFixed(6);
+  }
+
   function renderSegmentList(segments) {
     if (!segments.length) {
       segmentListEl.innerHTML = '<p class="segment-list-empty">暂无符合条件的路段</p>';
       return;
     }
+    const startColHeader = coordFormatSelect.value === 'mgrs' ? '起点(MGRS)' : '起点(经度,纬度)';
+    const endColHeader = coordFormatSelect.value === 'mgrs' ? '终点(MGRS)' : '终点(经度,纬度)';
     segmentListEl.innerHTML =
-      '<table><thead><tr><th>起点(经度,纬度)</th><th>起点海拔(m)</th><th>终点(经度,纬度)</th><th>终点海拔(m)</th><th>水平距离(m)</th><th>累积爬升(m)</th><th>坡度(%)</th><th>坡度等级</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>' +
+      startColHeader +
+      '</th><th>起点海拔(m)</th><th>' +
+      endColHeader +
+      '</th><th>终点海拔(m)</th><th>水平距离(m)</th><th>累积爬升(m)</th><th>坡度(%)</th><th>坡度等级</th></tr></thead><tbody>' +
       segments
         .map(
           (s) =>
             '<tr><td>' +
-            s.start.lon.toFixed(6) +
-            ',' +
-            s.start.lat.toFixed(6) +
+            formatCoord(s.start.lon, s.start.lat) +
             '</td><td>' +
             (s.start.ele != null ? s.start.ele.toFixed(1) : '—') +
             '</td><td>' +
-            s.end.lon.toFixed(6) +
-            ',' +
-            s.end.lat.toFixed(6) +
+            formatCoord(s.end.lon, s.end.lat) +
             '</td><td>' +
             (s.end.ele != null ? s.end.ele.toFixed(1) : '—') +
             '</td><td>' +

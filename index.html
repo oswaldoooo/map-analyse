@@ -19,6 +19,13 @@
       <input type="file" id="fileInput" accept=".gpx,.kml" hidden />
       <span id="fileName" class="file-name"></span>
     </div>
+    <div class="row">
+      <label for="coordFormat">坐标格式:</label>
+      <select id="coordFormat">
+        <option value="lonlat" selected>经纬度</option>
+        <option value="mgrs">MGRS</option>
+      </select>
+    </div>
     <div class="row row-center row-buttons">
       <button type="button" id="analyze" class="btn-analyze">分析</button>
       <button type="button" id="autoAnalyzeBtn" class="btn-auto-analyze">自动分析</button>
@@ -40,6 +47,21 @@
       <div id="segmentList" class="segment-list"></div>
     </div>
   </div>
+  <script type="module">
+    try {
+      const { forward } = await import('https://esm.sh/mgrs@1.0.0');
+      window.formatMGRS = (lon, lat) => {
+        try {
+          if (lat < -80 || lat > 84) return lon.toFixed(6) + ',' + lat.toFixed(6);
+          return forward([lon, lat], 5);
+        } catch (e) {
+          return lon.toFixed(6) + ',' + lat.toFixed(6);
+        }
+      };
+    } catch (e) {
+      window.formatMGRS = (lon, lat) => lon.toFixed(6) + ',' + lat.toFixed(6);
+    }
+  </script>
   <script src="main.js"></script>
 </body>
 </html>
