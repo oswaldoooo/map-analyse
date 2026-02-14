@@ -220,11 +220,37 @@
       '<Placemark><name>原始路迹</name><styleUrl>#styleTrack</styleUrl><LineString><coordinates>' +
       trackCoordsStr +
       '</coordinates></LineString></Placemark>';
+    const countByGrade = { S: 0, A: 0, B: 0, C: 0 };
+    lastSegments.forEach((s) => {
+      const g = getSlopeLevel(s.slope);
+      if (g !== '—' && countByGrade[g] != null) countByGrade[g]++;
+    });
+    const remainingByGrade = { S: countByGrade.S, A: countByGrade.A, B: countByGrade.B, C: countByGrade.C };
+    const waypointPlacemarks = [];
     const segmentPlacemarks = lastSegments
       .map((s, i) => {
         const grade = getSlopeLevel(s.slope);
         const styleId = grade === '—' ? 'styleTrack' : 'style' + grade;
         const coordsStr = segmentPointsToKmlCoords(s.points);
+        if (grade !== '—' && remainingByGrade[grade] != null) {
+          const num = remainingByGrade[grade];
+          const label = grade + num;
+          const startCoord =
+            s.start.lon +
+            ',' +
+            s.start.lat +
+            (s.start.ele != null ? ',' + s.start.ele : '');
+          const endCoord =
+            s.end.lon +
+            ',' +
+            s.end.lat +
+            (s.end.ele != null ? ',' + s.end.ele : '');
+          waypointPlacemarks.push(
+            '<Placemark><name>' + label + ' START</name><Point><coordinates>' + startCoord + '</coordinates></Point></Placemark>',
+            '<Placemark><name>' + label + ' END</name><Point><coordinates>' + endCoord + '</coordinates></Point></Placemark>'
+          );
+          remainingByGrade[grade]--;
+        }
         return (
           '<Placemark><name>路段' +
           (i + 1) +
@@ -248,6 +274,7 @@
       trackPlacemark +
       '\n  ' +
       segmentPlacemarks +
+      (waypointPlacemarks.length ? '\n  ' + waypointPlacemarks.join('\n  ') : '') +
       '\n  </Document>\n</kml>';
     const blob = new Blob(['\uFEFF' + kml], { type: 'application/vnd.google-earth.kml+xml;charset=utf-8' });
     downloadBlob(blob, filename);
